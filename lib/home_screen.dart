@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'password_vault_page.dart';
+import 'single_wifi_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,12 +13,12 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
   // 对应你的四个选项
-  static const List<Widget> _widgetOptions = <Widget>[
-      const Center(child: Text('选中单个 WiFi 模式')),
+    static final List<Widget> _widgetOptions = <Widget>[
+      const SingleWifiPage(), // 接入扫描页面
       const Center(child: Text('全部 WiFi 轮询模式')),
-      const PasswordVaultPage(), // 接入这里
+      const PasswordVaultPage(),
       const Center(child: Text('关于 WifiAutoEasyKey')),
-  ];
+    ];
 
   void _onItemTapped(int index) {
     setState(() {
