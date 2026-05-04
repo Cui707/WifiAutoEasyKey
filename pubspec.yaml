@@ -1,5 +1,5 @@
 name: wifiautoeasykey
-description: "A new Flutter project."
+description: "基于Flutter的wifi白嫖工具。内置密码库，放置常见wifi密码，对设备扫描到的未连接wifi进行自动轮询尝试。"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -30,6 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  cupertino_icons: ^1.0.6
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
