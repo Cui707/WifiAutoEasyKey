@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
-// 注意：请确保这里的文件名与你实际的 Service 和 Helper 文件名一致
 import 'wifi_service.dart'; 
 import 'db_helper.dart'; 
+import 'package:wifi_scan/wifi_scan.dart'; // 需要用到 WiFiAccessPoint 类型
+
+class WifiTask {
+  final String ssid;
+  final int level; 
+  bool isSelected;
+
+  WifiTask({required this.ssid, required this.level, this.isSelected = true});
+}
 
 class GlobalWiFiPage extends StatefulWidget {
   const GlobalWiFiPage({super.key});
@@ -14,53 +22,97 @@ class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
   final WifiService _wifiService = WifiService();
   final DbHelper _dbHelper = DbHelper();
 
-  List<Map<String, String>> _results = []; // 记录：SSID, 结果, 密码, 时间
+  List<WifiTask> _availableTasks = []; // 扫描到的可勾选列表
+  List<Map<String, String>> _results = []; // 运行结果日志
+  
   bool _isRunning = false;
+  bool _isScanning = false;
   String _currentStatus = "准备就绪";
   double _totalProgress = 0.0;
 
-  // 核心：全自动轮询逻辑
-  void _runGlobalAutoDiscovery() async {
-    // 1. 获取密码库数据
+  @override
+  void initState() {
+    super.initState();
+    _refreshWifiList(); // 页面加载时自动扫描一次
+  }
+
+  // 刷新环境中的 WiFi 列表
+  void _refreshWifiList() async {
+    if (_isRunning) return;
+    setState(() {
+      _isScanning = true;
+      _currentStatus = "正在扫描周围 WiFi...";
+    });
+
+    try {
+      // 这里的逻辑直接调用 wifi_scan 原始结果以获取 level
+      await WiFiScan.instance.startScan();
+      await Future.delayed(const Duration(seconds: 2));
+      final accessPoints = await WiFiScan.instance.getScannedResults();
+
+      setState(() {
+        // 提取 SSID 并去重，保留信号最强的那个
+        Map<String, WifiTask> distinctTasks = {};
+        for (var ap in accessPoints) {
+          if (ap.ssid.isEmpty) continue;
+          if (!distinctTasks.containsKey(ap.ssid) || ap.level > distinctTasks[ap.ssid]!.level) {
+            distinctTasks[ap.ssid] = WifiTask(ssid: ap.ssid, level: ap.level);
+          }
+        }
+        _availableTasks = distinctTasks.values.toList();
+        // 按信号强度排序（强的在前）
+        _availableTasks.sort((a, b) => b.level.compareTo(a.level));
+        
+        _isScanning = false;
+        _currentStatus = _availableTasks.isEmpty ? "未发现 WiFi" : "扫描完成，请勾选目标";
+      });
+    } catch (e) {
+      _showMsg("扫描失败: $e");
+      setState(() => _isScanning = false);
+    }
+  }
+
+  // 全选/反选逻辑
+  void _toggleAll(bool? value) {
+    setState(() {
+      for (var task in _availableTasks) {
+        task.isSelected = value ?? false;
+      }
+    });
+  }
+
+  // 核心：执行勾选的任务
+  void _runSelectedTasks() async {
+    final tasksToRun = _availableTasks.where((t) => t.isSelected).toList();
+    
+    if (tasksToRun.isEmpty) {
+      _showMsg("请先勾选需要轮询的 WiFi");
+      return;
+    }
+
     final passwords = await _dbHelper.getPasswords();
     if (passwords.isEmpty) {
-      _showMsg("密码库为空，请先添加密码");
+      _showMsg("密码库为空");
       return;
     }
 
     setState(() {
       _isRunning = true;
-      _results.clear();
-      _currentStatus = "正在扫描可用 Wi-Fi...";
+      _results.clear(); // 清空上次日志
     });
 
-    // 2. 获取当前环境所有 SSID
-    // 假设你的 WifiService 中有获取列表的方法，如果没有，请根据你使用的插件调用获取列表逻辑
-    List<String> scannableSsids = await _wifiService.getScannedSsids();
+    for (int i = 0; i < tasksToRun.length; i++) {
+      if (!_isRunning) break;
 
-    if (scannableSsids.isEmpty) {
+      String ssid = tasksToRun[i].ssid;
       setState(() {
-        _isRunning = false;
-        _currentStatus = "未发现任何可用热点";
-      });
-      return;
-    }
-
-    // 3. 开始大循环：遍历每一个 SSID
-    for (int i = 0; i < scannableSsids.length; i++) {
-      if (!_isRunning) break; // 支持手动停止
-
-      String ssid = scannableSsids[i];
-      setState(() {
-        _currentStatus = "全量任务: ($i/${scannableSsids.length}) \n当前目标: $ssid";
-        _totalProgress = i / scannableSsids.length;
+        _currentStatus = "正在轮询 (${i + 1}/${tasksToRun.length}): $ssid";
+        _totalProgress = (i + 1) / tasksToRun.length;
       });
 
-      // 调用之前写好的单点暴力破解逻辑
-      // 它会内部轮询所有密码并返回结果
+      // 调用 Service 中的单点暴力破解逻辑
       String? foundPassword = await _wifiService.startBruteForce(ssid);
 
-      // 4. 将结果插入列表（新结果在最上面）
       setState(() {
         _results.insert(0, {
           'ssid': ssid,
@@ -70,14 +122,12 @@ class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
         });
       });
 
-      // 稍微缓冲，防止 WiFi 模块过热或逻辑冲突
-      await Future.delayed(const Duration(milliseconds: 1500));
+      await Future.delayed(const Duration(milliseconds: 1000));
     }
 
     setState(() {
       _isRunning = false;
-      _totalProgress = 1.0;
-      _currentStatus = "全量扫描任务完成";
+      _currentStatus = "所选任务执行完毕";
     });
   }
 
@@ -86,65 +136,106 @@ class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  Color _getSignalColor(int level) {
+    if (level > -60) return Colors.green;
+    if (level > -80) return Colors.orange;
+    return Colors.red;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("全部 WiFi 自动轮询"),
+        title: const Text("全部 WiFi 模式"),
         actions: [
-          if (_isRunning)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))),
-            )
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: (_isRunning || _isScanning) ? null : _refreshWifiList,
+          )
         ],
       ),
       body: Column(
         children: [
-          // 状态显示面板
+          // 状态及进度显示
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             color: Colors.blue.withOpacity(0.05),
             child: Column(
               children: [
-                Text(_currentStatus, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
+                Text(_currentStatus, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
                 LinearProgressIndicator(value: _totalProgress),
               ],
             ),
           ),
-          // 结果日志列表
+          
+          // 1. 待选列表（带勾选和全选）
+          if (_availableTasks.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: CheckboxListTile(
+                title: const Text("全选可用网络", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                value: _availableTasks.every((t) => t.isSelected),
+                onChanged: _isRunning ? null : _toggleAll,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+            ),
+          
           Expanded(
-            child: _results.isEmpty
-                ? const Center(child: Text("点击下方播放按钮开始全场自动化测试", style: TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    itemCount: _results.length,
-                    itemBuilder: (context, index) {
-                      final item = _results[index];
-                      bool isSuccess = item['result'] == "匹配成功";
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        child: ListTile(
-                          leading: Icon(
-                            isSuccess ? Icons.check_circle : Icons.do_not_disturb_on,
-                            color: isSuccess ? Colors.green : Colors.grey,
-                          ),
-                          title: SelectableText(item['ssid']!),
-                          subtitle: isSuccess 
-                              ? SelectableText("密码: ${item['password']}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
-                              : const Text("尝试了库中所有密码"),
-                          trailing: Text(item['time']!, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        ),
-                      );
-                    },
-                  ),
+            flex: 3,
+            child: _availableTasks.isEmpty 
+              ? Center(child: _isScanning ? const CircularProgressIndicator() : const Text("暂无扫描结果"))
+              : ListView.builder(
+                  itemCount: _availableTasks.length,
+                  itemBuilder: (context, index) {
+                    final task = _availableTasks[index];
+                    return CheckboxListTile(
+                      enabled: !_isRunning,
+                      title: Text(task.ssid, style: const TextStyle(fontSize: 15)),
+                      subtitle: Text("信号强度: ${task.level} dBm"),
+                      secondary: Icon(Icons.wifi, color: _getSignalColor(task.level)),
+                      value: task.isSelected,
+                      onChanged: (val) => setState(() => task.isSelected = val!),
+                    );
+                  },
+                ),
+          ),
+
+          const Divider(height: 1, thickness: 2),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: Text("运行日志", style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ),
+
+          // 2. 运行结果日志
+          Expanded(
+            flex: 2,
+            child: Container(
+              color: Colors.black.withOpacity(0.02),
+              child: _results.isEmpty
+                  ? const Center(child: Text("尚未开始任务", style: TextStyle(fontSize: 12, color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: _results.length,
+                      itemBuilder: (context, index) {
+                        final item = _results[index];
+                        bool isSuccess = item['result'] == "匹配成功";
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(isSuccess ? Icons.key : Icons.close, color: isSuccess ? Colors.green : Colors.red, size: 20),
+                          title: SelectableText("${item['ssid']} -> ${item['result']}"),
+                          subtitle: isSuccess ? SelectableText("密码: ${item['password']}", style: const TextStyle(fontWeight: FontWeight.bold)) : null,
+                          trailing: Text(item['time']!, style: const TextStyle(fontSize: 10)),
+                        );
+                      },
+                    ),
+            ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _isRunning ? () => setState(() => _isRunning = false) : _runGlobalAutoDiscovery,
-        child: Icon(_isRunning ? Icons.stop : Icons.play_arrow),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isRunning ? () => setState(() => _isRunning = false) : _runSelectedTasks,
+        label: Text(_isRunning ? "停止" : "启动勾选任务"),
+        icon: Icon(_isRunning ? Icons.stop : Icons.play_arrow),
       ),
     );
   }
