@@ -33,6 +33,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   sqflite: ^2.3.0
   path: ^1.8.3
+  wifi_scan: ^0.4.1
   wifi_iot: ^0.3.18
   permission_handler: ^11.3.1
 
@@ -46,6 +47,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: "^0.13.1" 
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -88,3 +90,11 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_launcher_icons:
+  android: true        # 为 Android 平台生成图标
+  ios: false           # 如果不需要 iOS 图标可以设置为 false
+  image_path: "assets/easy.png" # 替换为你的图标路径
+  windows:
+    generate: true     # 为 Windows 平台生成图标
+    image_path: "assets/easy.png" # 替换为你的图标路径（logo.png）
+    icon_size: 48      # 可选：Windows 图标的尺寸，通常保持默认或根据需要调整

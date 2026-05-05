@@ -17,7 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const SingleWifiPage(), // 接入扫描页面
       const Center(child: Text('全部 WiFi 轮询模式')),
       const PasswordVaultPage(),
-      const Center(child: Text('关于 WifiAutoEasyKey')),
+      const Center(child: Text('此工具用于自动化使用常见密码轮询测试未知wifi密码。')),
     ];
 
   void _onItemTapped(int index) {

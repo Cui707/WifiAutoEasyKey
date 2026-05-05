@@ -10,16 +10,16 @@ class DbHelper {
 
   // 预置的常用密码库
   final List<String> _presetPasswords = [
-    '12345678',
-    '88888888',
     '00000000',
     '11111111',
+    '1234567890',
     '123456789',
     'password',
     '66668888',
     '12344321',
     'qwertyui',
-    // 你可以在这里继续添加更多工程现场常用的默认密码
+    '12345678',
+    '88888888',
   ];
 
   Future<Database> get database async {

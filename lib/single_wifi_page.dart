@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:wifi_iot/wifi_iot.dart';
+import 'package:wifi_scan/wifi_scan.dart';
+import 'package:wifi_iot/wifi_iot.dart' as iot;
 import 'package:permission_handler/permission_handler.dart';
 import 'db_helper.dart';
 import 'wifi_service.dart'; // 确保引入了逻辑层
@@ -12,7 +13,8 @@ class SingleWifiPage extends StatefulWidget {
 }
 
 class _SingleWifiPageState extends State<SingleWifiPage> {
-  List<WlanNetwork> _networks = [];
+  // 修改：使用 wifi_scan 提供的 WiFiAccessPoint 类型
+  List<WiFiAccessPoint> _networks = [];
   bool _isScanning = false;
   final DbHelper _dbHelper = DbHelper();
   final WifiService _wifiService = WifiService();
@@ -29,8 +31,14 @@ class _SingleWifiPageState extends State<SingleWifiPage> {
     
     var status = await Permission.location.request();
     if (status.isGranted) {
-      // 扫描周围的热点
-      List<WlanNetwork> ht = await WiFiForIoTPlugin.loadWifiList();
+      // 修改：使用 wifi_scan 插件的实例进行扫描
+      final canScan = await WiFiScan.instance.canStartScan();
+      if (canScan == CanStartScan.yes) {
+        await WiFiScan.instance.startScan();
+      }
+      
+      // 获取扫描结果
+      List<WiFiAccessPoint> ht = await WiFiScan.instance.getScannedResults();
       setState(() {
         _networks = ht;
         _isScanning = false;
@@ -112,20 +120,53 @@ class _SingleWifiPageState extends State<SingleWifiPage> {
     // 逻辑执行完毕，关闭进度弹窗
     if (mounted) {
       Navigator.pop(context); 
-      _showResultDialog(foundPassword);
+      _showResultDialog(foundPassword, ssid);
     }
   }
 
   // 3. 结果反馈弹窗
-  void _showResultDialog(String? password) {
+  //void _showResultDialog(String? password, String ssid) {
+    //showDialog(
+      //context: context,
+      //builder: (context) => AlertDialog(
+        //title: Text(password != null ? " 🎉 成功破解" : " ❌ 轮询结束"),
+        //content: Text(
+          //password != null 
+            //? "找到正确密码：\n\n$password" 
+            //: "密码库内所有密码均已尝试，未匹配成功。"
+        //),
+        //actions: [
+          //TextButton(
+            //onPressed: () => Navigator.pop(context),
+            //child: const Text("确定"),
+          //),
+        //],
+      //),
+    //);
+  //}
+
+
+  // 3. 结果反馈弹窗
+void _showResultDialog(String? password, String ssid) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(password != null ? " 🎉 成功找回" : " ❌ 轮询结束"),
-        content: Text(
-          password != null 
-            ? "找到正确密码：\n\n$password" 
-            : "密码库内所有密码均已尝试，未匹配成功。"
+        title: Text(password != null ? " 🎉 成功破解" : " ❌ 轮询结束"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("目标 Wi-Fi: $ssid"),
+            const SizedBox(height: 10),
+            if (password != null)
+              // 使用 SelectableText 让你可以长按直接复制密码
+              SelectableText(
+                "匹配到的密码: $password",
+                style: const TextStyle(fontSize: 16),
+              )
+            else
+              const Text("尝试了库中所有密码，均无法连接。"),
+          ],
         ),
         actions: [
           TextButton(
@@ -174,12 +215,12 @@ class _SingleWifiPageState extends State<SingleWifiPage> {
                   child: ListTile(
                     leading: Icon(
                       Icons.wifi,
-                      color: (wifi.level ?? -100) > -60 ? Colors.green : Colors.orange,
+                      color: (wifi.level) > -60 ? Colors.green : Colors.orange,
                     ),
-                    title: Text(wifi.ssid ?? "未知 SSID", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(wifi.ssid.isEmpty ? "未知 SSID" : wifi.ssid, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text("信号强度: ${wifi.level} dBm"),
                     trailing: const Icon(Icons.play_circle_fill, color: Colors.blueAccent, size: 32),
-                    onTap: () => _startAttempt(wifi.ssid ?? ""),
+                    onTap: () => _startAttempt(wifi.ssid),
                   ),
                 );
               },
