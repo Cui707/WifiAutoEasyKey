@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:wifi_scan/wifi_scan.dart';
 import 'package:wifi_iot/wifi_iot.dart';
 import 'db_helper.dart';
 
@@ -64,6 +65,64 @@ class WifiService {
     } catch (e) {
       print("连接尝试异常: $e");
       return false;
+    }
+  }
+  bool _isGlobalRunning = false;
+  
+  // 停止全局扫描的开关
+  void stopGlobalProcess() => _isGlobalRunning = false;
+
+  // 全局自动模式
+  Future<void> startGlobalAutoMode({
+    required List<String> ssids,
+    required Function(String currentSsid, String? foundPassword, int index, int total) onUpdate,
+  }) async {
+    _isGlobalRunning = true;
+
+    for (int i = 0; i < ssids.length; i++) {
+      if (!_isGlobalRunning) break;
+
+      String ssid = ssids[i];
+      // 这里的 startBruteForce 是你之前写的单点轮询逻辑
+      String? foundPassword = await startBruteForce(ssid);
+
+      // 回调给 UI 层记录结果
+      onUpdate(ssid, foundPassword, i + 1, ssids.length);
+      
+      // 给硬件一点喘息时间，避免高频切换导致 Wi-Fi 模块假死
+      await Future.delayed(const Duration(seconds: 2));
+    }
+    
+    _isGlobalRunning = false;
+  }
+  /// 获取当前环境扫描到的所有有效 SSID 列表
+  Future<List<String>> getScannedSsids() async {
+    try {
+      // 检查插件是否可用
+      final canScan = await WiFiScan.instance.canStartScan();
+      if (canScan != CanStartScan.yes) {
+        print("扫描受限: $canScan");
+        return [];
+      }
+
+      // 发起扫描请求
+      await WiFiScan.instance.startScan();
+      
+      // 关键：给 Android 系统硬件 2 秒钟时间来刷新缓存
+      await Future.delayed(const Duration(seconds: 2));
+
+      // 获取结果
+      final results = await WiFiScan.instance.getScannedResults();
+
+      // 提取 SSID、去重、过滤掉隐藏网络
+      return results
+          .map((e) => e.ssid)
+          .where((ssid) => ssid.isNotEmpty)
+          .toSet() 
+          .toList();
+    } catch (e) {
+      print("获取 WiFi 列表异常: $e");
+      return [];
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'password_vault_page.dart';
 import 'single_wifi_page.dart';
+import 'global_wifi_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,7 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // 对应你的四个选项
     static final List<Widget> _widgetOptions = <Widget>[
       const SingleWifiPage(), // 接入扫描页面
-      const Center(child: Text('全部 WiFi 轮询模式')),
+      const GlobalWiFiPage(),
       const PasswordVaultPage(),
       const Center(child: Text('此工具用于自动化使用常见密码轮询测试未知wifi密码。')),
     ];
