@@ -8,40 +8,44 @@ class DbHelper {
 
   static Database? _database;
 
-  // 预置的常用密码库
-  final List<String> _presetPasswords = [
-    '00000000',
-    '11111111',
-    '1234567890',
-    '123456789',
-    'password',
-    '66668888',
-    '12344321',
-    'qwertyui',
-    '12345678',
-    '88888888',
-  ];
+final List<String> _presetPasswords = ['12345678', '88888888'];
 
+  // 获取数据库单例
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDb();
+    // 指向正确的初始化函数
+    _database = await _initDatabase();
     return _database!;
   }
 
-  Future<Database> _initDb() async {
+  Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'wifi_vault.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // 提升版本号
       onCreate: (db, version) async {
-        // 1. 创建表
+        // 第一次安装时：同时创建两张表
         await db.execute(
           'CREATE TABLE passwords(id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT)',
         );
-        
-        // 2. 批量插入预置密码
+        await db.execute(
+          "CREATE TABLE scan_history("
+          "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+          "ssid TEXT, result TEXT, password TEXT, time TEXT)"
+        );
+        // 初始密码入库
         for (String pwd in _presetPasswords) {
           await db.insert('passwords', {'content': pwd});
+        }
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // 已经安装了旧版的用户：补齐新表
+        if (oldVersion < 2) {
+          await db.execute(
+            "CREATE TABLE scan_history("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "ssid TEXT, result TEXT, password TEXT, time TEXT)"
+          );
         }
       },
     );
@@ -72,5 +76,38 @@ class DbHelper {
     for (String pwd in _presetPasswords) {
       await db.insert('passwords', {'content': pwd});
     }
+  }
+  Future<void> _onCreate(Database db, int version) async {
+    // 密码库表
+    await db.execute(
+      "CREATE TABLE passwords(id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT)"
+    );
+    // 新增：扫描历史记录表
+    await db.execute(
+      "CREATE TABLE scan_history("
+      "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "ssid TEXT, "
+      "result TEXT, "
+      "password TEXT, "
+      "time TEXT)"
+    );
+  }
+
+  // 插入历史记录的方法
+  Future<void> insertHistory(Map<String, String> data) async {
+    final db = await database; // 假设你的类里有获取数据库的方法
+    await db.insert('scan_history', data);
+  }
+
+  // 获取所有历史记录（按时间倒序）
+  Future<List<Map<String, dynamic>>> getHistory() async {
+    final db = await database;
+    return await db.query('scan_history', orderBy: 'id DESC');
+  }
+  
+  // 清空记录的方法（方便调试）
+  Future<void> clearHistory() async {
+    final db = await database;
+    await db.delete('scan_history');
   }
 }

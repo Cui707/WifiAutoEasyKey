@@ -122,16 +122,28 @@ class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
         _totalProgress = i / tasksToRun.length;
       });
 
+      // --- 关键点：在这里获取结果 ---
       String? foundPassword = await _wifiService.startBruteForce(ssid);
 
-      setState(() {
-        _results.insert(0, {
+      final historyItem = {
           'ssid': ssid,
           'result': foundPassword != null ? "匹配成功" : "无匹配",
           'password': foundPassword ?? "",
-          'time': DateTime.now().toString().substring(11, 19),
+          'time': DateTime.now().toString().substring(0, 19),
+        };
+
+        // 给数据库操作加保险
+        try {
+          await _dbHelper.insertHistory(historyItem);
+        } catch (e) {
+          // 如果数据库报错，只在控制台打印，不中断程序
+          print("数据库写入失败: $e");
+        }
+
+        // 更新 UI 列表（即使数据库失败，UI 也要显示结果）
+        setState(() {
+          _results.insert(0, historyItem);
         });
-      });
 
       await Future.delayed(const Duration(milliseconds: 1000));
     }
@@ -159,6 +171,63 @@ class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
     return Colors.red;
   }
 
+void _viewHistory() async {
+    final history = await _dbHelper.getHistory();
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // 允许弹窗高度超过半屏
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.75, // 占屏幕 75% 高度
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("持久化历史记录", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                TextButton.icon(
+                  onPressed: () {
+                    _dbHelper.clearHistory();
+                    Navigator.pop(context);
+                    _showMsg("历史记录已清空");
+                  },
+                  icon: const Icon(Icons.delete_sweep, size: 18),
+                  label: const Text("清空"),
+                ),
+              ],
+            ),
+            const Divider(),
+            Expanded(
+              child: history.isEmpty
+                  ? const Center(child: Text("本地数据库无记录", style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: history.length,
+                      itemBuilder: (context, index) {
+                        final item = history[index];
+                        bool isSuccess = item['result'] == "匹配成功";
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(isSuccess ? Icons.offline_pin : Icons.history_toggle_off, 
+                                       color: isSuccess ? Colors.green : Colors.grey),
+                          title: SelectableText(item['ssid'].toString()),
+                          subtitle: Text("${item['time']}\n${isSuccess ? '密码: ' + item['password'].toString() : '未匹配'}"),
+                          isThreeLine: isSuccess,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,7 +237,13 @@ class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: (_isRunning || _isScanning) ? null : _refreshWifiList,
-          )
+            tooltip: '刷新列表',
+          ),
+          IconButton(
+            icon: const Icon(Icons.history), // 使用历史记录图标
+            tooltip: '查看扫描历史',
+            onPressed: (_isRunning || _isScanning) ? null : _viewHistory,
+          ),
         ],
       ),
       body: Column(
