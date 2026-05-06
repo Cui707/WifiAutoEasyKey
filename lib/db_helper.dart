@@ -8,7 +8,9 @@ class DbHelper {
 
   static Database? _database;
 
-final List<String> _presetPasswords = ['12345678', '88888888'];
+final List<String> _presetPasswords = [
+  '88888888', '12345678', '66666666'
+];
 
   // 获取数据库单例
   Future<Database> get database async {
