@@ -7,13 +7,19 @@ enum ConnectionStatus { idle, testing, success, failed }
 
 class WifiService {
   final DbHelper _dbHelper = DbHelper();
+  int? _selectedLibraryId;
   
   // 用于向 UI 报告进度的回调
   Function(String currentPassword, int index, int total)? onProgress;
+  
+  // 设置选中的密码库
+  void setSelectedLibrary(int? libraryId) {
+    _selectedLibraryId = libraryId;
+  }
 
   Future<String?> startBruteForce(String ssid) async {
-    // 1. 从数据库获取所有密码
-    final List<Map<String, dynamic>> passwordMaps = await _dbHelper.getPasswords();
+    // 1. 从数据库获取所有密码（基于选中的密码库）
+    final List<Map<String, dynamic>> passwordMaps = await _dbHelper.getPasswords(libraryId: _selectedLibraryId);
     final List<String> passwords = passwordMaps.map((e) => e['content'] as String).toList();
     
     if (passwords.isEmpty) return null;

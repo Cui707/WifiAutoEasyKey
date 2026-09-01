@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:wifi_scan/wifi_scan.dart';
-import 'package:wifi_iot/wifi_iot.dart' as iot;
 import 'package:permission_handler/permission_handler.dart';
 import 'db_helper.dart';
 import 'wifi_service.dart'; // 确保引入了逻辑层
@@ -17,12 +17,19 @@ class _SingleWifiPageState extends State<SingleWifiPage> {
   List<WiFiAccessPoint> _networks = [];
   bool _isScanning = false;
   final DbHelper _dbHelper = DbHelper();
-  final WifiService _wifiService = WifiService();
+  late WifiService _wifiService;
 
   @override
   void initState() {
     super.initState();
+    _wifiService = WifiService();
+    _initializeWifiService();
     _requestPermissionAndScan();
+  }
+
+  Future<void> _initializeWifiService() async {
+    final defaultLibraryId = await _dbHelper.getDefaultLibraryId();
+    _wifiService.setSelectedLibrary(defaultLibraryId);
   }
 
   // 1. 请求权限并开始扫描
@@ -212,15 +219,25 @@ void _showResultDialog(String? password, String ssid) {
                 final wifi = _networks[index];
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.wifi,
-                      color: (wifi.level) > -60 ? Colors.green : Colors.orange,
+                  child: GestureDetector(
+                    onLongPress: () {
+                      if (wifi.ssid.isNotEmpty) {
+                        Clipboard.setData(ClipboardData(text: wifi.ssid));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('已复制 SSID: ${wifi.ssid}')),
+                        );
+                      }
+                    },
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.wifi,
+                        color: (wifi.level) > -60 ? Colors.green : Colors.orange,
+                      ),
+                      title: Text(wifi.ssid.isEmpty ? "未知 SSID" : wifi.ssid, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text("信号强度: ${wifi.level} dBm"),
+                      trailing: const Icon(Icons.play_circle_fill, color: Colors.blueAccent, size: 32),
+                      onTap: () => _startAttempt(wifi.ssid),
                     ),
-                    title: Text(wifi.ssid.isEmpty ? "未知 SSID" : wifi.ssid, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("信号强度: ${wifi.level} dBm"),
-                    trailing: const Icon(Icons.play_circle_fill, color: Colors.blueAccent, size: 32),
-                    onTap: () => _startAttempt(wifi.ssid),
                   ),
                 );
               },

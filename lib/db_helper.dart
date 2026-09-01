@@ -9,23 +9,11 @@ class DbHelper {
   static Database? _database;
 
 final List<String> _presetPasswords = [
-  '147258369', '369258147', '789456123', '159357456', '95279527', '00112233',
-  '12345600',  '123321123',
-  '168168168', '16881688', '520520520', '88816888', '66616866', '1234567890',
-  '987654321', '88889999', '1122334455', '22334455', '33445566', '44556677',
-  '22222222', '33333333', '44444444', '55555555', '77777777', '12341234',
-  '23456789', '34567890', '45678901', '56789012', '67890123', '78901234',
-  '89012345', '90123456', '8888168', '6666168', '13572468', '24681357', '13579246', 
-  '01230123', '11112222', '22221111', '33334444', '44443333',  
-  '55667788', '10203040', 'abc12345', 'admin123', 'admin888', 'wifi123456', 'qwertyui',
-  'asdfghjkl', '86868686', '65432109', '13145200', '13145211', '52013141',
-  '88886666', '66668888', '12121212',
-  '20252025','20262026',
-  '12345670', '1q2w3e4r', 'a1b2c3d4',  '77778888', '99990000',
-  'iloveyou', 'sunshine', 'welcome', 'internet', '09876543',
-  '66666666', '00000000', '11111111', '123456789', '01234567', '1234554321',
-  '12344321', '99999999', '123123123', '111222333',
-  'password', '87654321', '11223344', '12345678' ,  '88888888'
+  '12341234',
+  'admin123', 
+  '88886666', '66668888', 
+  'iloveyou', 
+  '66666666', 'password',  '12345678' ,  '88888888'
 ];
 
   // 获取数据库单例
@@ -40,24 +28,29 @@ final List<String> _presetPasswords = [
     String path = join(await getDatabasesPath(), 'wifi_vault.db');
     return await openDatabase(
       path,
-      version: 2, // 提升版本号
+      version: 3, // 提升版本号以支持多密码库
       onCreate: (db, version) async {
-        // 第一次安装时：同时创建两张表
+        // 第一次安装时：创建所有表
         await db.execute(
-          'CREATE TABLE passwords(id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT)',
+          'CREATE TABLE password_libraries(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, is_default BOOLEAN DEFAULT 0)'
+        );
+        await db.execute(
+          'CREATE TABLE passwords(id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT, library_id INTEGER, FOREIGN KEY(library_id) REFERENCES password_libraries(id))'
         );
         await db.execute(
           "CREATE TABLE scan_history("
           "id INTEGER PRIMARY KEY AUTOINCREMENT, "
           "ssid TEXT, result TEXT, password TEXT, time TEXT)"
         );
-        // 初始密码入库
+        // 创建默认密码库并标记为默认
+        final defaultLibraryId = await db.insert('password_libraries', {'name': '默认密码库', 'is_default': 1});
+        // 初始密码入库到默认密码库
         for (String pwd in _presetPasswords) {
-          await db.insert('passwords', {'content': pwd});
+          await db.insert('passwords', {'content': pwd, 'library_id': defaultLibraryId});
         }
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // 已经安装了旧版的用户：补齐新表
+        // 从旧版本升级
         if (oldVersion < 2) {
           await db.execute(
             "CREATE TABLE scan_history("
@@ -65,26 +58,103 @@ final List<String> _presetPasswords = [
             "ssid TEXT, result TEXT, password TEXT, time TEXT)"
           );
         }
+        if (oldVersion < 3) {
+          // 添加密码库表
+          await db.execute(
+            'CREATE TABLE password_libraries(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, is_default BOOLEAN DEFAULT 0)'
+          );
+          // 修改密码表添加library_id列
+          await db.execute('ALTER TABLE passwords ADD COLUMN library_id INTEGER');
+          // 创建默认密码库
+          final defaultLibraryId = await db.insert('password_libraries', {'name': '默认密码库', 'is_default': 1});
+          // 将现有密码迁移到默认密码库
+          await db.update('passwords', {'library_id': defaultLibraryId});
+        }
       },
     );
   }
 
-  // 插入新密码
-  Future<int> insertPassword(String password) async {
+  // 插入新密码到指定密码库
+  Future<int> insertPassword(String password, {int? libraryId}) async {
     final db = await database;
-    return await db.insert('passwords', {'content': password});
+    final queryLibraryId = libraryId ?? (await getDefaultLibraryId());
+    return await db.insert('passwords', {
+      'content': password,
+      'library_id': queryLibraryId
+    });
   }
 
-  // 获取所有密码
-  Future<List<Map<String, dynamic>>> getPasswords() async {
+  // 获取指定密码库的所有密码
+  Future<List<Map<String, dynamic>>> getPasswords({int? libraryId}) async {
     final db = await database;
-    return await db.query('passwords', orderBy: 'id DESC');
+    final queryLibraryId = libraryId ?? (await getDefaultLibraryId());
+    return await db.query('passwords', 
+      where: 'library_id = ?', 
+      whereArgs: [queryLibraryId],
+      orderBy: 'id DESC'
+    );
   }
 
   // 删除单个密码
   Future<int> deletePassword(int id) async {
     final db = await database;
     return await db.delete('passwords', where: 'id = ?', whereArgs: [id]);
+  }
+
+// 获取默认密码库ID
+  Future<int> getDefaultLibraryId() async {
+    final db = await database;
+    final result = await db.query('password_libraries', 
+      where: 'is_default = 1',
+      limit: 1
+    );
+    return result.isNotEmpty ? result.first['id'] as int : 1;
+  }
+
+  // 获取所有密码库
+  Future<List<Map<String, dynamic>>> getLibraries() async {
+    final db = await database;
+    return await db.query('password_libraries', orderBy: 'id DESC');
+  }
+
+  // 创建新密码库
+  Future<int> createLibrary(String name) async {
+    final db = await database;
+    return await db.insert('password_libraries', {'name': name});
+  }
+
+  // 更新密码库名称
+  Future<int> updateLibraryName(int id, String name) async {
+    final db = await database;
+    return await db.update('password_libraries', {'name': name}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // 删除密码库（同时删除其中的密码）
+  Future<int> deleteLibrary(int id) async {
+    final db = await database;
+    // 删除密码库中的所有密码
+    await db.delete('passwords', where: 'library_id = ?', whereArgs: [id]);
+    // 删除密码库
+    return await db.delete('password_libraries', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // 设置默认密码库
+  Future<void> setDefaultLibrary(int id) async {
+    final db = await database;
+    // 清除所有默认标记
+    await db.update('password_libraries', {'is_default': 0});
+    // 设置新的默认密码库
+    await db.update('password_libraries', {'is_default': 1}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // 获取默认密码库名称
+  Future<String> getDefaultLibraryName() async {
+    final db = await database;
+    final result = await db.query('password_libraries', 
+      where: 'is_default = 1',
+      limit: 1
+    );
+    return result.isNotEmpty ? result.first['name'] as String : '默认密码库';
   }
 
   // 可选：重置密码库（清空并重新导入预置密码）
@@ -113,19 +183,19 @@ final List<String> _presetPasswords = [
 
   // 插入历史记录的方法
   Future<void> insertHistory(Map<String, String> data) async {
-    final db = await database; // 假设你的类里有获取数据库的方法
+    final db = await this.database;
     await db.insert('scan_history', data);
   }
 
   // 获取所有历史记录（按时间倒序）
   Future<List<Map<String, dynamic>>> getHistory() async {
-    final db = await database;
+    final db = await this.database;
     return await db.query('scan_history', orderBy: 'id DESC');
   }
   
   // 清空记录的方法（方便调试）
   Future<void> clearHistory() async {
-    final db = await database;
+    final db = await this.database;
     await db.delete('scan_history');
   }
 }

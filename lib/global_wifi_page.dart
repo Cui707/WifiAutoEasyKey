@@ -19,8 +19,21 @@ class GlobalWiFiPage extends StatefulWidget {
 }
 
 class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
-  final WifiService _wifiService = WifiService();
   final DbHelper _dbHelper = DbHelper();
+  late WifiService _wifiService;
+
+  @override
+  void initState() {
+    super.initState();
+    _wifiService = WifiService();
+    _initializeWifiService();
+    _refreshWifiList(); 
+  }
+
+Future<void> _initializeWifiService() async {
+    final defaultLibraryId = await _dbHelper.getDefaultLibraryId();
+    _wifiService.setSelectedLibrary(defaultLibraryId);
+  }
 
   List<WifiTask> _availableTasks = []; // 待选列表
   List<Map<String, String>> _results = []; // 运行结果日志
@@ -35,12 +48,6 @@ class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
   String _activeSsid = "";        // 正在轮询的 WiFi 名字
   String _currentPwdText = "";    
   String _innerCountText = "";    
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshWifiList(); 
-  }
 
   void _refreshWifiList() async {
     if (_isRunning) return;
