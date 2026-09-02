@@ -3,7 +3,12 @@ import 'package:flutter/material.dart';
 import 'db_helper.dart';
 
 class JsonImporter {
-  static Future<void> importPasswordsFromJson(String jsonString, {int? libraryId, BuildContext? context}) async {
+  static Future<int> importPasswordsFromJson(
+    String jsonString, {
+    int? libraryId,
+    BuildContext? context,
+    Function(int current, int total)? onProgress,
+  }) async {
     try {
       final jsonData = json.decode(jsonString);
       
@@ -22,18 +27,27 @@ class JsonImporter {
         }
       }
       
-      // 导入密码
+      // 导入密码并报告进度
       final dbHelper = DbHelper();
-      for (final password in jsonData) {
+      for (int i = 0; i < jsonData.length; i++) {
+        final password = jsonData[i];
         await dbHelper.insertPassword(password.trim(), libraryId: libraryId);
+        
+        // 报告进度
+        onProgress?.call(i + 1, jsonData.length);
       }
+      
+      // 返回导入数量
+      final importedCount = jsonData.length;
       
       // 显示成功消息
       if (context != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('成功导入密码')),
+          SnackBar(content: Text('成功导入 $importedCount 条密码')),
         );
       }
+      
+      return importedCount;
     } catch (e) {
       // 显示错误消息
       if (context != null) {

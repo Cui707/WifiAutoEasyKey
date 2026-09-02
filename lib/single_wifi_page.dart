@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'db_helper.dart';
+import 'app_initializer.dart';
 import 'wifi_service.dart'; // 确保引入了逻辑层
 
 class SingleWifiPage extends StatefulWidget {
@@ -18,18 +19,30 @@ class _SingleWifiPageState extends State<SingleWifiPage> {
   bool _isScanning = false;
   final DbHelper _dbHelper = DbHelper();
   late WifiService _wifiService;
+  // bool _isInitialized = false; // 暂时注释掉，避免警告
 
   @override
   void initState() {
     super.initState();
-    _wifiService = WifiService();
     _initializeWifiService();
-    _requestPermissionAndScan();
   }
 
   Future<void> _initializeWifiService() async {
-    final defaultLibraryId = await _dbHelper.getDefaultLibraryId();
-    _wifiService.setSelectedLibrary(defaultLibraryId);
+    try {
+      // 使用全局初始化管理器，避免重复查询数据库
+      _wifiService = WifiService();
+      final defaultLibraryId = await AppInitializer().getDefaultLibraryId();
+      _wifiService.setSelectedLibrary(defaultLibraryId);
+      
+      // 初始化完成后开始扫描
+      _requestPermissionAndScan();
+    } catch (e) {
+      // 如果初始化失败，使用默认值并开始扫描
+      _wifiService = WifiService();
+      _wifiService.setSelectedLibrary(1);
+      
+      _requestPermissionAndScan();
+    }
   }
 
   // 1. 请求权限并开始扫描

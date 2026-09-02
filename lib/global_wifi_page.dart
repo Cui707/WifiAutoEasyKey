@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'wifi_service.dart'; 
 import 'db_helper.dart'; 
+import 'app_initializer.dart'; 
 import 'package:wifi_scan/wifi_scan.dart'; 
 
 class WifiTask {
@@ -21,18 +22,30 @@ class GlobalWiFiPage extends StatefulWidget {
 class _GlobalWiFiPageState extends State<GlobalWiFiPage> {
   final DbHelper _dbHelper = DbHelper();
   late WifiService _wifiService;
+  // bool _isInitialized = false; // 暂时注释掉，避免警告
 
   @override
   void initState() {
     super.initState();
-    _wifiService = WifiService();
     _initializeWifiService();
-    _refreshWifiList(); 
   }
 
 Future<void> _initializeWifiService() async {
-    final defaultLibraryId = await _dbHelper.getDefaultLibraryId();
-    _wifiService.setSelectedLibrary(defaultLibraryId);
+    try {
+      // 使用全局初始化管理器，避免重复查询数据库
+      _wifiService = WifiService();
+      final defaultLibraryId = await AppInitializer().getDefaultLibraryId();
+      _wifiService.setSelectedLibrary(defaultLibraryId);
+      
+      // 初始化完成后刷新WiFi列表
+      _refreshWifiList(); 
+    } catch (e) {
+      // 如果初始化失败，使用默认值并刷新WiFi列表
+      _wifiService = WifiService();
+      _wifiService.setSelectedLibrary(1);
+      
+      _refreshWifiList(); 
+    }
   }
 
   List<WifiTask> _availableTasks = []; // 待选列表

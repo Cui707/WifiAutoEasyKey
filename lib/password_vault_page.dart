@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'app_initializer.dart';
 import 'db_helper.dart';
 import 'json_importer.dart';
 
@@ -20,7 +21,18 @@ class _PasswordVaultPageState extends State<PasswordVaultPage> {
   @override
   void initState() {
     super.initState();
-    _refreshPasswords();
+    _initializePasswordVault();
+  }
+  
+  Future<void> _initializePasswordVault() async {
+    try {
+      // 使用全局初始化管理器确保密码库已初始化
+      await AppInitializer().getDefaultLibraryId();
+      _refreshPasswords();
+    } catch (e) {
+      // 如果初始化失败，直接刷新密码
+      _refreshPasswords();
+    }
   }
 
   void _refreshPasswords() async {
@@ -47,47 +59,78 @@ class _PasswordVaultPageState extends State<PasswordVaultPage> {
     final controller = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('JSON批量导入密码'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: controller,
-                maxLines: 8,
-                decoration: const InputDecoration(
-                  hintText: '粘贴JSON格式的密码数组...',
-                  border: OutlineInputBorder(),
-                ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('JSON批量导入密码'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    maxLines: 8,
+                    decoration: const InputDecoration(
+                      hintText: '粘贴JSON格式的密码数组...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton(
+                    onPressed: () {
+                      controller.text = JsonImporter.getJsonFormatExample();
+                    },
+                    child: const Text('使用示例格式'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
+            ),
+            actions: [
               TextButton(
-                onPressed: () {
-                  controller.text = JsonImporter.getJsonFormatExample();
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final jsonString = controller.text;
+                  if (jsonString.isNotEmpty) {
+                    setState(() {
+                      // 禁用按钮防止重复点击
+                      (context as Element).findRenderObject()?.markNeedsLayout();
+                    });
+                    
+                    try {
+                      // 执行导入
+                      final importedCount = await JsonImporter.importPasswordsFromJson(
+                        jsonString,
+                        libraryId: _selectedLibraryId,
+                        onProgress: (current, total) {
+                          // 更新进度（这里可以添加更多UI更新）
+                          debugPrint('导入进度: $current/$total');
+                        },
+                      );
+                      
+                      // 关闭对话框
+                      if (mounted) Navigator.pop(context);
+                      
+                      // 延迟刷新页面，确保UI更新
+                      await Future.delayed(const Duration(milliseconds: 100));
+                      _refreshPasswords();
+                      
+                      // 显示成功统计
+                      _showImportSuccessDialog(importedCount);
+                      
+                    } catch (e) {
+                      // 显示错误详情
+                      _showImportErrorDialog(e);
+                    }
+                  }
                 },
-                child: const Text('使用示例格式'),
+                child: const Text('导入'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final jsonString = controller.text;
-              if (jsonString.isNotEmpty) {
-                JsonImporter.importPasswordsFromJson(jsonString, libraryId: _selectedLibraryId);
-                Navigator.pop(context);
-                _refreshPasswords();
-              }
-            },
-            child: const Text('导入'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -121,6 +164,66 @@ class _PasswordVaultPageState extends State<PasswordVaultPage> {
         );
       }
     }
+  }
+
+  // 显示导入成功对话框
+  void _showImportSuccessDialog(int importedCount) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 24),
+            SizedBox(width: 8),
+            Text('导入成功'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('成功导入 $importedCount 条密码'),
+            const SizedBox(height: 16),
+            Text('新密码已添加到密码库列表中'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 显示导入失败对话框
+  void _showImportErrorDialog(dynamic error) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.error, color: Colors.red, size: 24),
+            SizedBox(width: 8),
+            Text('导入失败'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('错误信息: ${error.toString()}'),
+            const SizedBox(height: 16),
+            Text('请检查JSON格式后重试'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showAIPromptDialog() {
