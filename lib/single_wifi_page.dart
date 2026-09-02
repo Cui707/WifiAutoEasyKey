@@ -47,7 +47,8 @@ class _SingleWifiPageState extends State<SingleWifiPage> {
       // 获取扫描结果
       List<WiFiAccessPoint> ht = await WiFiScan.instance.getScannedResults();
       setState(() {
-        _networks = ht;
+        // 按信号强度从强到弱排序（level值从大到小）
+        _networks = ht..sort((a, b) => b.level.compareTo(a.level));
         _isScanning = false;
       });
     } else {
