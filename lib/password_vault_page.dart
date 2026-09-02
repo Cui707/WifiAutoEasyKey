@@ -106,25 +106,27 @@ class _PasswordVaultPageState extends State<PasswordVaultPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('JSON批量导入密码'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              maxLines: 10,
-              decoration: const InputDecoration(
-                hintText: '粘贴JSON格式的密码数组...',
-                border: OutlineInputBorder(),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                  hintText: '粘贴JSON格式的密码数组...',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: () {
-                controller.text = JsonImporter.getJsonFormatExample();
-              },
-              child: const Text('使用示例格式'),
-            ),
-          ],
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () {
+                  controller.text = JsonImporter.getJsonFormatExample();
+                },
+                child: const Text('使用示例格式'),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -145,6 +147,37 @@ class _PasswordVaultPageState extends State<PasswordVaultPage> {
         ],
       ),
     );
+  }
+
+  void _clearCurrentPasswords() async {
+    // 显示确认对话框
+    bool? confirmed = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认清空密码'),
+        content: const Text('确定要清空当前密码库中的所有密码吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      await _dbHelper.resetToDefault(); // 使用现有的resetToDefault方法
+      _refreshPasswords();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('密码库已清空')),
+        );
+      }
+    }
   }
 
   void _showAIPromptDialog() {
@@ -319,6 +352,15 @@ Wi-Fi名称(SSID): $ssid
                   ElevatedButton(
                     onPressed: _showAIPromptDialog,
                     child: const Text('生成AI提示词'),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: _clearCurrentPasswords,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('清空密码'),
                   ),
                 ],
               ),
