@@ -37,7 +37,7 @@ class AboutPage extends StatelessWidget {
             ),
             const SizedBox(height: 30),
             const Text(
-              '版本: 1.0.0',
+              '',
               style: TextStyle(
                 fontSize: 16,
               ),
@@ -54,7 +54,7 @@ class AboutPage extends StatelessWidget {
             ),
             const SizedBox(height: 30),
             const Text(
-              '基于Flutter开发的Wi-Fi密码管理工具',
+              '基于Flutter开发的Wi-Fi密码工具',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey,

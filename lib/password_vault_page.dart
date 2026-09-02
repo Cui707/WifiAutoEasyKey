@@ -13,37 +13,18 @@ class PasswordVaultPage extends StatefulWidget {
 class _PasswordVaultPageState extends State<PasswordVaultPage> {
   final DbHelper _dbHelper = DbHelper();
   final TextEditingController _controller = TextEditingController();
-  final TextEditingController _libraryNameController = TextEditingController();
   List<Map<String, dynamic>> _passwords = [];
   List<Map<String, dynamic>> _libraries = [];
   int? _selectedLibraryId;
-  bool _showLibraryManagerUI = false;
-  int? _editingLibraryId;
 
   @override
   void initState() {
     super.initState();
-    _refreshLibraries();
     _refreshPasswords();
   }
 
-  void _refreshLibraries() async {
-    final data = await _dbHelper.getLibraries();
-    setState(() {
-      _libraries = data;
-      // 设置默认选中的密码库
-      if (_libraries.isNotEmpty) {
-        try {
-          _selectedLibraryId = _libraries.firstWhere((lib) => lib['is_default'] == 1)['id'];
-        } catch (e) {
-          _selectedLibraryId = _libraries.first['id'];
-        }
-      }
-    });
-  }
-
   void _refreshPasswords() async {
-    final data = await _dbHelper.getPasswords(libraryId: _selectedLibraryId);
+    final data = await _dbHelper.getPasswords();
     setState(() {
       _passwords = data;
     });
@@ -51,7 +32,7 @@ class _PasswordVaultPageState extends State<PasswordVaultPage> {
 
   void _addPassword() async {
     if (_controller.text.isNotEmpty) {
-      await _dbHelper.insertPassword(_controller.text, libraryId: _selectedLibraryId);
+      await _dbHelper.insertPassword(_controller.text);
       _controller.clear();
       _refreshPasswords();
     }
@@ -60,44 +41,6 @@ class _PasswordVaultPageState extends State<PasswordVaultPage> {
   void _deletePassword(int id) async {
     await _dbHelper.deletePassword(id);
     _refreshPasswords();
-  }
-
-  void _createLibrary() async {
-    if (_libraryNameController.text.isNotEmpty) {
-      await _dbHelper.createLibrary(_libraryNameController.text);
-      _libraryNameController.clear();
-      _refreshLibraries();
-    }
-  }
-
-  void _updateLibraryName(int id, String newName) async {
-    await _dbHelper.updateLibraryName(id, newName);
-    _refreshLibraries();
-    _editingLibraryId = null;
-  }
-
-  void _deleteLibrary(int id) async {
-    await _dbHelper.deleteLibrary(id);
-    _refreshLibraries();
-    _refreshPasswords();
-  }
-
-  void _setDefaultLibrary(int id) async {
-    await _dbHelper.setDefaultLibrary(id);
-    _refreshLibraries();
-  }
-
-  void _showLibraryManager() {
-    setState(() {
-      _showLibraryManagerUI = true;
-    });
-  }
-
-  void _hideLibraryManager() {
-    setState(() {
-      _showLibraryManagerUI = false;
-      _editingLibraryId = null;
-    });
   }
 
   void _showJsonImportDialog() {
@@ -279,44 +222,6 @@ Wi-Fi名称(SSID): $ssid
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 密码库选择器
-        if (!_showLibraryManagerUI)
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: DropdownButton<int>(
-                    value: _selectedLibraryId,
-                    hint: Text('选择密码库: ${_libraries.isNotEmpty ? (() {
-                      try {
-                        return _libraries.firstWhere((lib) => lib['is_default'] == 1)['name'];
-                      } catch (e) {
-                        return _libraries.first['name'];
-                      }
-                    })() : '默认密码库'}'),
-                    items: _libraries.map((library) {
-                      return DropdownMenuItem<int>(
-                        value: library['id'],
-                        child: Text(library['name']),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedLibraryId = value;
-                        _refreshPasswords();
-                      });
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: _showLibraryManager,
-                  child: const Text('管理密码库'),
-                ),
-              ],
-            ),
-          ),
         
         // 密码输入区域
         Padding(
@@ -344,23 +249,39 @@ Wi-Fi名称(SSID): $ssid
               const SizedBox(height: 10),
               Row(
                 children: [
-                  ElevatedButton(
-                    onPressed: _showJsonImportDialog,
-                    child: const Text('JSON批量导入'),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: _showAIPromptDialog,
-                    child: const Text('生成AI提示词'),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: _clearCurrentPasswords,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
+                  Flexible(
+                    flex: 1, // 统一宽度比例
+                    child: ElevatedButton(
+                      onPressed: _showJsonImportDialog,
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(0, 36), // 确保最小高度
+                      ),
+                      child: const Text('JSON批量导入'),
                     ),
-                    child: const Text('清空密码'),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    flex: 1, // 统一宽度比例
+                    child: ElevatedButton(
+                      onPressed: _showAIPromptDialog,
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(0, 36), // 确保最小高度
+                      ),
+                      child: const Text('生成AI提示词'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    flex: 1, // 统一宽度比例
+                    child: ElevatedButton(
+                      onPressed: _clearCurrentPasswords,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        minimumSize: Size(60, 36), // 设置最小宽度为60
+                      ),
+                      child: const Text('清空密码'),
+                    ),
                   ),
                 ],
               ),
@@ -384,80 +305,6 @@ Wi-Fi名称(SSID): $ssid
             },
           ),
         ),
-        
-        // 密码库管理界面
-        if (_showLibraryManagerUI)
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _libraryNameController,
-                        decoration: const InputDecoration(
-                          hintText: '新密码库名称...',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton(
-                      onPressed: _createLibrary,
-                      child: const Text('创建密码库'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _libraries.length,
-                    itemBuilder: (context, index) {
-                      final library = _libraries[index];
-                      return ListTile(
-                        title: _editingLibraryId == library['id']
-                            ? TextField(
-                                controller: TextEditingController(text: library['name'] ?? ''),
-                                onSubmitted: (value) => _updateLibraryName(library['id'], value),
-                                autofocus: true,
-                              )
-                            : Text(library['name']),
-                        subtitle: Text('创建时间: ${library['created_at'] ?? '未知'}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () {
-                                setState(() {
-                                  _editingLibraryId = library['id'];
-                                  _libraryNameController.text = library['name'];
-                                });
-                              },
-                            ),
-                            IconButton(
-                              icon: Icon(library['is_default'] == 1 ? Icons.star : Icons.star_border),
-                              onPressed: () => _setDefaultLibrary(library['id']),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.redAccent),
-                              onPressed: () => _deleteLibrary(library['id']),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _hideLibraryManager,
-                  child: const Text('关闭管理'),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }
